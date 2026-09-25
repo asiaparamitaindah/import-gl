@@ -21,7 +21,7 @@
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             width: 100%;
-            max-width: 800px;
+            max-width: 950px; /* Diperlebar untuk menampung kolom No Urut */
         }
         h2 {
             color: #0056b3;
@@ -70,7 +70,7 @@
             display: flex;
             align-items: center;
             margin-bottom: 15px;
-            margin-top: -5px; /* Mengurangi jarak atas untuk kerapatan */
+            margin-top: -5px;
         }
         .toggle-group input[type="checkbox"] {
             margin-right: 10px;
@@ -79,7 +79,7 @@
             cursor: pointer;
         }
         .toggle-group label {
-            font-weight: normal; /* Dibuat normal agar beda dengan label input */
+            font-weight: normal; 
             color: #444;
             font-size: 13px;
             cursor: pointer;
@@ -99,6 +99,18 @@
         }
         .btn:hover {
             background-color: #004494;
+        }
+        .btn-delete {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .btn-delete:hover {
+            background-color: #c82333;
         }
         #status {
             margin-top: 15px;
@@ -120,12 +132,21 @@
             border: 1px solid #ddd;
             padding: 8px;
             text-align: left;
+            vertical-align: middle;
         }
         th {
             background-color: #0056b3;
             color: white;
         }
-        tr:nth-child(even) {background-color: #f9f9f9;}
+        /* Grouping warna selang-seling berdasarkan No Transaksi (2 baris) */
+        tbody.preview-body tr:nth-child(4n-3), 
+        tbody.preview-body tr:nth-child(4n-2) {
+            background-color: #ffffff;
+        }
+        tbody.preview-body tr:nth-child(4n-1), 
+        tbody.preview-body tr:nth-child(4n) {
+            background-color: #f2f7ff;
+        }
     </style>
 </head>
 <body>
@@ -142,7 +163,7 @@
         
         <div id="status"></div>
 
-        <!-- STEP 2: AREA MAPPING & INPUT (Muncul setelah file dipilih) -->
+        <!-- STEP 2: AREA MAPPING & INPUT -->
         <div id="mappingSection" style="display: none; border-top: 2px solid #e2eeff; padding-top: 20px; margin-top: 20px;">
             
             <div class="input-group">
@@ -150,7 +171,6 @@
                 <select id="selectKeterangan"></select>
             </div>
             
-            <!-- Tambahan Toggle Hapus -->
             <div class="toggle-group">
                 <input type="checkbox" id="toggleHapusDropdown" checked>
                 <label for="toggleHapusDropdown">Hapus dari daftar pilihan jika sudah ditambahkan ke Preview</label>
@@ -186,20 +206,22 @@
                 <table>
                     <thead>
                         <tr>
+                            <th style="width: 30px; text-align: center;">No.</th>
                             <th>No Trans</th>
                             <th>Tanggal</th>
                             <th>Kode Akun</th>
                             <th>Keterangan</th>
                             <th>Debit</th>
                             <th>Kredit</th>
+                            <th style="width: 70px; text-align: center;">Aksi</th>
                         </tr>
                     </thead>
-                    <tbody id="previewTbody">
+                    <tbody id="previewTbody" class="preview-body">
                         <!-- Data preview akan muncul di sini -->
                     </tbody>
                 </table>
             </div>
-            <button class="btn" style="background-color: #28a745; margin-top: 20px;" onclick="processAndDownload()">📥 Convert & Download MASERP Ready</button>
+            <button class="btn" style="background-color: #28a745; margin-top: 20px;" id="btnDownload" onclick="processAndDownload()">📥 Convert & Download MASERP Ready</button>
         </div>
 
     </div>
@@ -244,6 +266,8 @@
                     }
                     
                     rawDataList = [];
+                    previewDataList = []; // Reset preview jika file baru diupload
+                    
                     for (let i = headerIndex + 1; i < rows.length; i++) {
                         const row = rows[i];
                         if (!row || row.length === 0) continue;
@@ -252,7 +276,6 @@
                         if (!rawTanggal || rawTanggal === 'undefined' || rawTanggal === 'NaN') continue;
                         
                         rawDataList.push({
-                            // Tambahkan ID unik untuk menjaga referensi jika tidak dihapus
                             id: 'item_' + i, 
                             tanggal: rawTanggal,
                             keterangan: String(row[1] || '').trim(),
@@ -262,6 +285,7 @@
                     }
                     
                     updateDropdown();
+                    renderPreviewTable();
                     document.getElementById('mappingSection').style.display = 'block';
                     document.getElementById('status').innerHTML = '<span class="success">File berhasil dimuat. Silakan pilih data untuk ditambahkan ke preview.</span>';
                     
@@ -297,7 +321,7 @@
                 select.appendChild(option);
             });
 
-            // Kembalikan ke pilihan sebelumnya jika masih ada di daftar (untuk kasus centang lepas)
+            // Kembalikan ke pilihan sebelumnya jika masih ada di daftar
             if (previousSelection && select.options.length > previousSelection) {
                 select.value = previousSelection;
             }
@@ -336,14 +360,14 @@
                 return;
             }
             
-            const item = rawDataList[selectedIndex];
+            const originalItem = rawDataList[selectedIndex];
             const isKapital = document.getElementById('toggleKapital').checked;
             const isHapusDropdown = document.getElementById('toggleHapusDropdown').checked;
             
             let baseNoTransValue = document.getElementById('inputNoTrans').value.trim();
             let kodeAkunValue = document.getElementById('inputKodeAkun').value.trim();
             let kodeAkun2Value = document.getElementById('inputKodeAkun2').value.trim();
-            let finalKeterangan = item.keterangan;
+            let finalKeterangan = originalItem.keterangan;
 
             if (isKapital) {
                 baseNoTransValue = baseNoTransValue.toUpperCase();
@@ -352,21 +376,28 @@
                 finalKeterangan = finalKeterangan.toUpperCase();
             }
 
-            const tanggal = formatTanggal(item.tanggal);
+            const tanggal = formatTanggal(originalItem.tanggal);
             
-            // Push struktur MASERP - BARIS 1
-            previewDataList.push([
+            // Baris 1 MASERP
+            const row1 = [
                 baseNoTransValue, '06', tanggal, kodeAkunValue, finalKeterangan, 
-                item.debit, item.kredit, 'JKT', '', 'GL', '', '', finalKeterangan
-            ]);
+                originalItem.debit, originalItem.kredit, 'JKT', '', 'GL', '', '', finalKeterangan
+            ];
 
-            // Push struktur MASERP - BARIS 2
-            previewDataList.push([
+            // Baris 2 MASERP
+            const row2 = [
                 baseNoTransValue, '06', tanggal, kodeAkun2Value, finalKeterangan, 
-                item.kredit, item.debit, 'JKT', '', 'GL', '', '', finalKeterangan
-            ]);
+                originalItem.kredit, originalItem.debit, 'JKT', '', 'GL', '', '', finalKeterangan
+            ];
             
-            // Logika Toggle Hapus dari Dropdown
+            // Simpan objek utuh ke previewDataList
+            previewDataList.push({
+                originalData: originalItem,  
+                removedFromDropdown: isHapusDropdown, 
+                maserpRows: [row1, row2]
+            });
+            
+            // Logika Hapus dari Dropdown
             if (isHapusDropdown) {
                 rawDataList.splice(selectedIndex, 1);
                 updateDropdown();
@@ -379,27 +410,79 @@
             });
             document.getElementById('inputNoTrans').value = nextNoTrans;
             
-            // Tampilkan ke UI tabel
+            renderPreviewTable();
+        }
+
+        // FUNGSI HAPUS DARI PREVIEW & RESTORE
+        function removeFromPreview(previewIndex) {
+            const itemToRestore = previewDataList[previewIndex];
+            
+            if (itemToRestore.removedFromDropdown) {
+                const exists = rawDataList.some(item => item.id === itemToRestore.originalData.id);
+                if (!exists) {
+                    rawDataList.push(itemToRestore.originalData);
+                    rawDataList.sort((a, b) => {
+                        let idA = parseInt(a.id.replace('item_', ''));
+                        let idB = parseInt(b.id.replace('item_', ''));
+                        return idA - idB;
+                    });
+                    updateDropdown();
+                }
+            }
+            
+            // Hapus dari preview
+            previewDataList.splice(previewIndex, 1);
             renderPreviewTable();
         }
         
         // FUNGSI RENDER TABEL HTML
         function renderPreviewTable() {
-            document.getElementById('previewSection').style.display = 'block';
+            const previewSection = document.getElementById('previewSection');
             const tbody = document.getElementById('previewTbody');
             tbody.innerHTML = '';
             
-            previewDataList.forEach(row => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${row[0]}</td>
-                    <td>${row[2]}</td>
-                    <td>${row[3]}</td>
-                    <td>${row[4]}</td>
-                    <td>${row[5]}</td>
-                    <td>${row[6]}</td>
+            if (previewDataList.length === 0) {
+                previewSection.style.display = 'none';
+                return;
+            }
+            
+            previewSection.style.display = 'block';
+            
+            previewDataList.forEach((group, index) => {
+                const row1 = group.maserpRows[0];
+                const row2 = group.maserpRows[1];
+                
+                // Menentukan nomor urut (1, 2, 3...)
+                const nomorUrut = index + 1;
+                
+                // Baris pertama 
+                const tr1 = document.createElement('tr');
+                tr1.innerHTML = `
+                    <td rowspan="2" style="text-align: center; font-weight: bold;">${nomorUrut}</td>
+                    <td>${row1[0]}</td>
+                    <td>${row1[2]}</td>
+                    <td>${row1[3]}</td>
+                    <td>${row1[4]}</td>
+                    <td>${row1[5]}</td>
+                    <td>${row1[6]}</td>
+                    <td rowspan="2" style="text-align: center;">
+                        <button class="btn-delete" onclick="removeFromPreview(${index})">❌ Hapus</button>
+                    </td>
                 `;
-                tbody.appendChild(tr);
+                
+                // Baris kedua 
+                const tr2 = document.createElement('tr');
+                tr2.innerHTML = `
+                    <td>${row2[0]}</td>
+                    <td>${row2[2]}</td>
+                    <td>${row2[3]}</td>
+                    <td>${row2[4]}</td>
+                    <td>${row2[5]}</td>
+                    <td>${row2[6]}</td>
+                `;
+                
+                tbody.appendChild(tr1);
+                tbody.appendChild(tr2);
             });
         }
 
@@ -410,20 +493,25 @@
                 return;
             }
             
+            // Susun data untuk diexport (tanpa kolom nomor urut)
+            const exportDataList = [];
+            previewDataList.forEach(group => {
+                exportDataList.push(group.maserpRows[0]);
+                exportDataList.push(group.maserpRows[1]);
+            });
+            
             // Persiapkan Header Kolom MASERP
             const maserpData = [
                 [], 
                 ['NomorTransaksi', 'TypeTransaksi', 'TanggalTransaksi(DD/MM/YYYY)', 'KodeAkun (15)', 'Keterangan', 'Debit', 'Kredit', 'Kode Departemen', 'Kode Cost Center', 'Kode Sumber', 'Kode Proyek', 'Kode Komponen', 'Keterangan Header'],
-                ...previewDataList
+                ...exportDataList
             ];
             
             try {
-                // Buat file Excel output
                 const newWb = XLSX.utils.book_new();
                 const newWs = XLSX.utils.aoa_to_sheet(maserpData);
                 XLSX.utils.book_append_sheet(newWb, newWs, "GL_Import_Ready");
                 
-                // Unduh
                 XLSX.writeFile(newWb, "MASERP_GL_Import_Ready.xlsx");
                 document.getElementById('status').innerHTML = '<span class="success">Berhasil! File MASERP_GL_Import_Ready.xlsx diunduh.</span>';
             } catch (error) {
